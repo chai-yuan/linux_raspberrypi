@@ -24,6 +24,7 @@ use kernel::{
     fmt,
 };
 
+
 module! {
     type: RustMiscDev,
     name: "rust_miscdev",
@@ -62,34 +63,43 @@ impl file::Operations for RustFile {
     type Data = Arc<RustMiscdevData>;
     type OpenData = Arc<RustMiscdevData>;
 
-    fn open(_shared: &Arc<RustMiscdevData>, _file: &file::File) -> Result<Self::Data> {
+    fn open(shared: &Arc<RustMiscdevData>, _file: &file::File) -> Result<Self::Data> {
         pr_info!("open in miscdevice\n",);
-        //TODO
-        todo!()
+        Ok(shared.clone())
     }
 
     fn read(
-        _shared: ArcBorrow<'_, RustMiscdevData>,
+        shared: ArcBorrow<'_, RustMiscdevData>,
         _file: &File,
-        _writer: &mut impl IoBufferWriter,
-        _offset: u64,
+        writer: &mut impl IoBufferWriter,
+        offset: u64,
     ) -> Result<usize> {
         pr_info!("read in miscdevice\n");
-        //TODO
-        todo!()
-        
+        if writer.is_empty() || offset as usize >= GLOBALMEM_SIZE {
+            return Ok(0);
+        }
+        let mut inner = shared.inner.lock();
+        let data = &inner[offset as usize..];
+        writer.write_slice(data)?;
+        Ok(data.len())
     }
 
     fn write(
-        _shared: ArcBorrow<'_, RustMiscdevData>,
+        shared: ArcBorrow<'_, RustMiscdevData>,
         _file: &File,
-        _reader: &mut impl IoBufferReader,
-        _offset: u64,
+        reader: &mut impl IoBufferReader,
+        offset: u64,
     ) -> Result<usize> {
         pr_info!("write in miscdevice\n");
-        //TODO
-        todo!()
-
+        let data = reader.read_all()?;
+        if offset as usize + data.len() > GLOBALMEM_SIZE {
+            return Ok(0);
+        }
+        {
+            let mut inner = shared.inner.lock();
+            inner[offset as usize..offset as usize + data.len()].copy_from_slice(&data);
+        }
+        Ok(data.len())
     }
 
     fn release(_data: Self::Data, _file: &File) {
